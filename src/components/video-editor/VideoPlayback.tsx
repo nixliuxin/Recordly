@@ -167,10 +167,7 @@ import {
 	SNAP_TO_EDGES_RATIO_AUTO,
 } from "./videoPlayback/cursorFollowCamera";
 import { clampFocusToStage as clampFocusToStageUtil } from "./videoPlayback/focusUtils";
-import {
-	layoutVideoContent as layoutVideoContentUtil,
-	scalePreviewBorderRadius,
-} from "./videoPlayback/layoutUtils";
+import { layoutVideoContent as layoutVideoContentUtil } from "./videoPlayback/layoutUtils";
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { createVideoEventHandlers } from "./videoPlayback/videoEventHandlers";
 import {
@@ -348,6 +345,7 @@ function getEffectiveNativeAspectRatio(
 interface VideoPlaybackProps {
 	videoPath: string;
 	onDurationChange: (duration: number) => void;
+	onDimensionsChange?: (dimensions: { width: number; height: number }) => void;
 	onPreviewReadyChange?: (ready: boolean) => void;
 	onTimeUpdate: (time: number) => void;
 	currentTime: number;
@@ -432,6 +430,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		{
 			videoPath,
 			onDurationChange,
+			onDimensionsChange,
 			onPreviewReadyChange,
 			onTimeUpdate,
 			currentTime,
@@ -2837,6 +2836,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
 			const video = e.currentTarget;
 			onDurationChange(video.duration);
+
+			// Report the real decoded source dimensions so export/GIF sizing can
+			// react to them. Without this the editor keeps the 1920x1080 fallback
+			// and downscales high-res (e.g. 7680x2160) recordings on export.
+			if (video.videoWidth > 0 && video.videoHeight > 0) {
+				onDimensionsChange?.({ width: video.videoWidth, height: video.videoHeight });
+			}
 
 			// Push video info to extension host for query APIs
 			extensionHost.setVideoInfo({

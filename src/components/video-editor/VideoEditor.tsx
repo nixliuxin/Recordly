@@ -407,6 +407,13 @@ export default function VideoEditor() {
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [duration, setDuration] = useState(0);
+	// Real decoded dimensions of the source recording, reported once the video
+	// loads metadata. Used to drive export/GIF sizing so full-res recordings
+	// (e.g. 7680x2160) are not stuck on the 1920x1080 fallback.
+	const [sourceVideoDimensions, setSourceVideoDimensions] = useState({
+		width: 0,
+		height: 0,
+	});
 	const [wallpaper, setWallpaper] = useState<string>(initialEditorPreferences.wallpaper);
 	const [shadowIntensity, setShadowIntensity] = useState(
 		initialEditorPreferences.shadowIntensity,
@@ -1463,22 +1470,22 @@ export default function VideoEditor() {
 	const gifOutputDimensions = useMemo(
 		() =>
 			calculateOutputDimensions(
-				videoPlaybackRef.current?.video?.videoWidth || 1920,
-				videoPlaybackRef.current?.video?.videoHeight || 1080,
+				sourceVideoDimensions.width || 1920,
+				sourceVideoDimensions.height || 1080,
 				gifSizePreset,
 				GIF_SIZE_PRESETS,
 			),
-		[gifSizePreset],
+		[gifSizePreset, sourceVideoDimensions.width, sourceVideoDimensions.height],
 	);
 
 	const desiredMp4SourceDimensions = useMemo(
 		() =>
 			calculateMp4SourceDimensions(
-				videoPlaybackRef.current?.video?.videoWidth || 1920,
-				videoPlaybackRef.current?.video?.videoHeight || 1080,
+				sourceVideoDimensions.width || 1920,
+				sourceVideoDimensions.height || 1080,
 				aspectRatio,
 			),
-		[aspectRatio],
+		[aspectRatio, sourceVideoDimensions.width, sourceVideoDimensions.height],
 	);
 
 	const mp4OutputDimensions = useMemo(() => {
@@ -4621,10 +4628,17 @@ export default function VideoEditor() {
 					});
 					const supportedSourceDimensions =
 						await ensureSupportedMp4SourceDimensions(selectedMp4FrameRate);
+					// The native NVIDIA CUDA (NVENC) export encodes fully natively and is
+					// NOT bound by the browser WebCodecs 4096px width cap. For it, use the
+					// full desired source dimensions (e.g. 7680x2160) instead of the
+					// WebCodecs-probed dimensions, which would otherwise downscale to <=4096.
+					const exportBaseDimensions = useExperimentalNvidiaCudaExport
+						? desiredMp4SourceDimensions
+						: supportedSourceDimensions;
 					const { width: exportWidth, height: exportHeight } =
 						calculateMp4ExportDimensions(
-							supportedSourceDimensions.width,
-							supportedSourceDimensions.height,
+							exportBaseDimensions.width,
+							exportBaseDimensions.height,
 							quality,
 						);
 					const bitrate = getMp4ExportBitrate({
@@ -5382,6 +5396,7 @@ export default function VideoEditor() {
 			ref={playbackRef}
 			videoPath={videoPath || ""}
 			onDurationChange={setDuration}
+			onDimensionsChange={setSourceVideoDimensions}
 			onPreviewReadyChange={setIsPreviewReady}
 			onTimeUpdate={setCurrentTime}
 			currentTime={currentTime}

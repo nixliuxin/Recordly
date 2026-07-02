@@ -17,8 +17,10 @@ static int clampByte(int v) {
 }
 
 static UINT32 calculateScreenRecordingBitrate(int width, int height, int fps) {
+    constexpr uint64_t kUltraPixels = 5120ULL * 2160ULL;  // >4K: ultrawide / dual-4K panels
     constexpr uint64_t kFourKPixels = 3840ULL * 2160ULL;
     constexpr uint64_t kQhdPixels = 2560ULL * 1440ULL;
+    constexpr UINT32 kBitrateUltra = 70000000;
     constexpr UINT32 kBitrate4K = 45000000;
     constexpr UINT32 kBitrateQhd = 28000000;
     constexpr UINT32 kBitrateBase = 18000000;
@@ -28,6 +30,7 @@ static UINT32 calculateScreenRecordingBitrate(int width, int height, int fps) {
         static_cast<uint64_t>((std::max)(width, 1)) *
         static_cast<uint64_t>((std::max)(height, 1));
     const UINT32 baseBitrate =
+        pixels >= kUltraPixels ? kBitrateUltra :
         pixels >= kFourKPixels ? kBitrate4K :
         pixels >= kQhdPixels ? kBitrateQhd :
         kBitrateBase;
@@ -69,13 +72,17 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
         return false;
     }
 
-    // Output media type (H.264)
+    // Output media type (HEVC / H.265).
+    // H.264 is capped at 4096px wide by every MF/NVENC encoder, which breaks
+    // capture on ultrawide / dual-4K panels (e.g. 7680x2160). HEVC supports up
+    // to 8192px and is hardware-encoded by NVENC on this GPU.
     ComPtr<IMFMediaType> outputType;
     hr = MFCreateMediaType(&outputType);
     if (FAILED(hr)) return false;
 
     outputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-    outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
+    outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_HEVC);
+    outputType->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH265VProfile_Main_420_8);
     const UINT32 videoBitrate = calculateScreenRecordingBitrate(width_, height_, fps_);
     outputType->SetUINT32(MF_MT_AVG_BITRATE, videoBitrate);
     MFSetAttributeSize(outputType.Get(), MF_MT_FRAME_SIZE, width_, height_);
