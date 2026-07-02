@@ -2870,6 +2870,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				const hasData = video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
 				if (hasDimensions && hasData) {
 					videoReadyRafRef.current = null;
+					// Report real dimensions here too: hardware HEVC decoders sometimes
+					// fire loadedmetadata with videoWidth still 0, so this is the reliable
+					// point at which the true source size is known.
+					onDimensionsChange?.({ width: video.videoWidth, height: video.videoHeight });
 					setVideoReady(true);
 					return;
 				}

@@ -1489,10 +1489,17 @@ export default function VideoEditor() {
 	);
 
 	const mp4OutputDimensions = useMemo(() => {
-		const baseWidth = supportedMp4SourceDimensions.encoderPath
+		// Outputs beyond the WebCodecs 4096px cap are encoded by the native HEVC
+		// raw-video path at full resolution, so display the full (desired) size
+		// rather than the WebCodecs-capped "supported" size.
+		const exceedsWebCodecsLimit =
+			desiredMp4SourceDimensions.width > 4096 || desiredMp4SourceDimensions.height > 4096;
+		const useSupported =
+			Boolean(supportedMp4SourceDimensions.encoderPath) && !exceedsWebCodecsLimit;
+		const baseWidth = useSupported
 			? supportedMp4SourceDimensions.width
 			: desiredMp4SourceDimensions.width;
-		const baseHeight = supportedMp4SourceDimensions.encoderPath
+		const baseHeight = useSupported
 			? supportedMp4SourceDimensions.height
 			: desiredMp4SourceDimensions.height;
 
@@ -4628,13 +4635,19 @@ export default function VideoEditor() {
 					});
 					const supportedSourceDimensions =
 						await ensureSupportedMp4SourceDimensions(selectedMp4FrameRate);
-					// The native NVIDIA CUDA (NVENC) export encodes fully natively and is
-					// NOT bound by the browser WebCodecs 4096px width cap. For it, use the
-					// full desired source dimensions (e.g. 7680x2160) instead of the
-					// WebCodecs-probed dimensions, which would otherwise downscale to <=4096.
-					const exportBaseDimensions = useExperimentalNvidiaCudaExport
-						? desiredMp4SourceDimensions
-						: supportedSourceDimensions;
+					// Native HEVC export (ffmpeg hevc_nvenc via the raw-video pipe) and the
+					// native NVIDIA CUDA path encode fully natively and are NOT bound by the
+					// browser WebCodecs 4096px width cap. When the output exceeds 4096px (or
+					// CUDA is selected), use the full desired source dimensions (e.g.
+					// 7680x2160); otherwise the WebCodecs-probed dimensions would downscale
+					// it to <=4096.
+					const exceedsWebCodecsLimit =
+						desiredMp4SourceDimensions.width > 4096 ||
+						desiredMp4SourceDimensions.height > 4096;
+					const exportBaseDimensions =
+						useExperimentalNvidiaCudaExport || exceedsWebCodecsLimit
+							? desiredMp4SourceDimensions
+							: supportedSourceDimensions;
 					const { width: exportWidth, height: exportHeight } =
 						calculateMp4ExportDimensions(
 							exportBaseDimensions.width,

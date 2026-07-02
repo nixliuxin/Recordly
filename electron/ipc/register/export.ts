@@ -287,9 +287,17 @@ export function registerExportHandlers() {
 						outputPath,
 					});
 				} else {
-					encoderName = await resolveNativeVideoEncoder(ffmpegPath, options.encodingMode);
+					encoderName = await resolveNativeVideoEncoder(
+						ffmpegPath,
+						options.encodingMode,
+						options.width,
+					);
 					ffmpegArgs = buildNativeVideoExportArgs(encoderName, options, outputPath);
 				}
+
+				console.log(
+					`[native-export] starting session inputMode=${inputMode} encoder=${encoderName} ${options.width}x${options.height}@${options.frameRate}`,
+				);
 
 				const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs, {
 					stdio: ["pipe", "ignore", "pipe"],
@@ -351,6 +359,10 @@ export function registerExportHandlers() {
 								resolve();
 								return;
 							}
+
+							console.error(
+								`[native-export] FFmpeg (${session.encoderName}) exited code=${code ?? "unknown"}${signal ? ` signal=${signal}` : ""}\n${session.stderrOutput.slice(-2000)}`,
+							);
 
 							reject(
 								new Error(

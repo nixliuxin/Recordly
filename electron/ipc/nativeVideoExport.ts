@@ -114,7 +114,24 @@ export function parseAvailableFfmpegEncoders(stdout: string): Set<string> {
 	return encoders;
 }
 
-export function getPreferredNativeVideoEncoders(platform: NodeJS.Platform): string[] {
+export function getPreferredNativeVideoEncoders(
+	platform: NodeJS.Platform,
+	options?: { preferHevc?: boolean },
+): string[] {
+	// HEVC is required for outputs wider than 4096px (H.264 is capped at 4096
+	// across every hardware encoder). HEVC hardware encoders reach 8192px.
+	if (options?.preferHevc) {
+		switch (platform) {
+			case "darwin":
+				return ["hevc_videotoolbox", "libx265"];
+			case "win32":
+				return ["hevc_nvenc", "hevc_qsv", "hevc_amf", "hevc_mf", "libx265"];
+			case "linux":
+				return ["hevc_nvenc", "hevc_qsv", "hevc_vaapi", "libx265"];
+			default:
+				return ["libx265"];
+		}
+	}
 	switch (platform) {
 		case "darwin":
 			return ["h264_videotoolbox", "libx264"];
@@ -131,6 +148,18 @@ function getLibx264ModeArgs(encodingMode: NativeExportEncodingMode): string[] {
 	switch (encodingMode) {
 		case "fast":
 			return ["-preset", "ultrafast", "-tune", "zerolatency"];
+		case "quality":
+			return ["-preset", "slow"];
+		case "balanced":
+		default:
+			return ["-preset", "medium"];
+	}
+}
+
+function getLibx265ModeArgs(encodingMode: NativeExportEncodingMode): string[] {
+	switch (encodingMode) {
+		case "fast":
+			return ["-preset", "ultrafast"];
 		case "quality":
 			return ["-preset", "slow"];
 		case "balanced":
@@ -280,6 +309,9 @@ export function buildNativeVideoExportArgs(
 	options: NativeVideoExportStartOptions,
 	outputPath: string,
 ): string[] {
+	const isHevc = /hevc|h265|libx265/i.test(encoder);
+	// Frames arrive top-down (WebCodecs VideoFrame.copyTo from a canvas), which
+	// matches ffmpeg's rawvideo row order, so no vflip is needed.
 	const args = [
 		"-y",
 		"-hide_banner",
@@ -295,8 +327,6 @@ export function buildNativeVideoExportArgs(
 		String(options.frameRate),
 		"-i",
 		"pipe:0",
-		"-vf",
-		"vflip",
 		"-an",
 		"-c:v",
 		encoder,
@@ -307,6 +337,13 @@ export function buildNativeVideoExportArgs(
 
 	if (encoder === "libx264") {
 		args.push(...getLibx264ModeArgs(options.encodingMode));
+	} else if (encoder === "libx265") {
+		args.push(...getLibx265ModeArgs(options.encodingMode));
+	}
+
+	// HEVC in MP4 needs the hvc1 tag for broad player/QuickTime compatibility.
+	if (isHevc) {
+		args.push("-tag:v", "hvc1");
 	}
 
 	args.push("-pix_fmt", "yuv420p", "-movflags", "+faststart", outputPath);

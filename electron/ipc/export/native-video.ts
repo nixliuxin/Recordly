@@ -3891,6 +3891,7 @@ export async function probeNativeVideoEncoder(
 	ffmpegPath: string,
 	encoderName: string,
 	encodingMode: NativeExportEncodingMode,
+	probeSize = 64,
 ) {
 	const outputPath = path.join(
 		app.getPath("temp"),
@@ -3899,8 +3900,8 @@ export async function probeNativeVideoEncoder(
 	const args = buildNativeVideoExportArgs(
 		encoderName,
 		{
-			width: 64,
-			height: 64,
+			width: probeSize,
+			height: probeSize,
 			frameRate: 1,
 			bitrate: 1_500_000,
 			encodingMode,
@@ -3938,15 +3939,22 @@ export async function probeNativeVideoEncoder(
 			resolve(code === 0);
 		});
 
-		process.stdin.end(Buffer.alloc(getNativeVideoInputByteSize(64, 64), 0));
+		process.stdin.end(Buffer.alloc(getNativeVideoInputByteSize(probeSize, probeSize), 0));
 	});
 }
 
 export async function resolveNativeVideoEncoder(
 	ffmpegPath: string,
 	encodingMode: NativeExportEncodingMode,
+	width?: number,
 ) {
+	// Outputs wider than 4096px cannot use H.264 (hardware cap); pick an HEVC
+	// encoder instead. The shared cache is keyed only on ffmpegPath+encodingMode,
+	// so skip it for the HEVC path to avoid returning/overwriting an H.264 result.
+	const preferHevc = (width ?? 0) > 4096;
+
 	if (
+		!preferHevc &&
 		cachedNativeVideoEncoder?.ffmpegPath === ffmpegPath &&
 		cachedNativeVideoEncoder?.encodingMode === encodingMode
 	) {
@@ -3955,21 +3963,31 @@ export async function resolveNativeVideoEncoder(
 
 	const availableEncoders = await getAvailableNativeVideoEncoders(ffmpegPath);
 	const candidates = [
-		...new Set([...getPreferredNativeVideoEncoders(process.platform), "libx264"]),
+		...new Set([
+			...getPreferredNativeVideoEncoders(process.platform, { preferHevc }),
+			preferHevc ? "libx265" : "libx264",
+		]),
 	];
+	const probeSize = preferHevc ? 256 : 64;
 
 	for (const encoderName of candidates) {
 		if (!availableEncoders.has(encoderName)) {
 			continue;
 		}
 
-		if (await probeNativeVideoEncoder(ffmpegPath, encoderName, encodingMode)) {
-			setCachedNativeVideoEncoder({ ffmpegPath, encodingMode, encoderName });
+		if (await probeNativeVideoEncoder(ffmpegPath, encoderName, encodingMode, probeSize)) {
+			if (!preferHevc) {
+				setCachedNativeVideoEncoder({ ffmpegPath, encodingMode, encoderName });
+			}
 			return encoderName;
 		}
 	}
 
-	throw new Error("No usable FFmpeg encoder was available for native export");
+	throw new Error(
+		preferHevc
+			? `No usable FFmpeg HEVC encoder was available for ${width}px-wide native export`
+			: "No usable FFmpeg encoder was available for native export",
+	);
 }
 
 export function canCopyAudioCodecIntoMp4(codec?: string | null) {

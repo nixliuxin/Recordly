@@ -334,6 +334,12 @@ export class ModernVideoExporter {
 	private pendingNativeWriteChunks: Uint8Array[] = [];
 	private pendingNativeWriteBytes = 0;
 	private maxNativeWriteInFlight = 1;
+	private useNativeRawVideo = false;
+	// WebCodecs hardware encoders cap output width/height at 4096px; beyond that
+	// we pipe raw frames to ffmpeg hevc_nvenc instead.
+	private static readonly MAX_WEBCODECS_ENCODE_DIMENSION = 4096;
+	// Raw RGBA frames are large (~66MB at 7680x2160); keep few writes in flight.
+	private static readonly NATIVE_RAW_VIDEO_MAX_IN_FLIGHT = 2;
 	private lastNativeExportError: string | null = null;
 	private nativeStaticLayoutSkipReason: string | null = null;
 	private nativeStaticLayoutSkipReasons: string[] = [];
@@ -401,8 +407,24 @@ export class ModernVideoExporter {
 					prefersNativeStaticLayoutBeforeBreeze;
 				this.lastNativeExportError = null;
 
+				// Outputs beyond the WebCodecs 4096px cap must be encoded by the native
+				// ffmpeg HEVC raw-video pipe (hevc_nvenc). Start that session up front and
+				// skip the WebCodecs / static-layout paths below entirely.
+				const requiresNativeRawVideo =
+					this.config.width > ModernVideoExporter.MAX_WEBCODECS_ENCODE_DIMENSION ||
+					this.config.height > ModernVideoExporter.MAX_WEBCODECS_ENCODE_DIMENSION;
+				if (requiresNativeRawVideo) {
+					useNativeEncoder = await this.tryStartNativeRawVideoExport();
+					if (!useNativeEncoder) {
+						throw new Error(
+							this.lastNativeExportError ||
+								`Cannot export at ${this.config.width}x${this.config.height}px: no compatible encoder was available.`,
+						);
+					}
+				}
+
 				let stageStartedAt = this.getNowMs();
-				if (shouldDeferNativeEncoderStart) {
+				if (this.useNativeRawVideo || shouldDeferNativeEncoderStart) {
 					// Defer the streaming native encoder until after metadata is known so
 					// static-layout exports can use the fastest compatible compositor first.
 				} else if (
@@ -705,7 +727,9 @@ export class ModernVideoExporter {
 							return;
 						}
 
-						if (useNativeEncoder) {
+						if (this.useNativeRawVideo) {
+							await this.encodeRenderedFrameRawNative(timestamp, frameDuration);
+						} else if (useNativeEncoder) {
 							await this.encodeRenderedFrameNative(
 								timestamp,
 								frameDuration,
@@ -2582,6 +2606,97 @@ export class ModernVideoExporter {
 		}
 	}
 
+	// Wide (>4096px) export path: composited frames are piped as raw RGBA to a
+	// native ffmpeg session that encodes with hevc_nvenc, bypassing the WebCodecs
+	// 4096px cap. All editor effects are already baked into the composited frame.
+	private async tryStartNativeRawVideoExport(): Promise<boolean> {
+		this.lastNativeExportError = null;
+
+		if (typeof window === "undefined" || !window.electronAPI?.nativeVideoExportStart) {
+			this.lastNativeExportError = `${NATIVE_EXPORT_ENGINE_NAME} export is not available in this build.`;
+			return false;
+		}
+
+		if (this.config.width % 2 !== 0 || this.config.height % 2 !== 0) {
+			this.lastNativeExportError = `Native export requires even output dimensions (${this.config.width}x${this.config.height}).`;
+			return false;
+		}
+
+		if (typeof VideoFrame === "undefined") {
+			this.lastNativeExportError = "Raw-video export requires WebCodecs VideoFrame support.";
+			return false;
+		}
+
+		const result = await window.electronAPI.nativeVideoExportStart({
+			width: this.config.width,
+			height: this.config.height,
+			frameRate: this.config.frameRate,
+			bitrate: this.config.bitrate,
+			encodingMode: this.config.encodingMode ?? "balanced",
+			inputMode: "rawvideo",
+		});
+
+		if (!result.success || !result.sessionId) {
+			this.lastNativeExportError =
+				result.error || "Native raw-video export could not be started on this system.";
+			return false;
+		}
+
+		this.nativeExportSessionId = result.sessionId;
+		this.lastNativeExportError = null;
+		this.encodeBackend = "ffmpeg";
+		this.encoderName = "rawvideo-hevc";
+		this.useNativeRawVideo = true;
+		this.pendingNativeWriteChunks = [];
+		this.pendingNativeWriteBytes = 0;
+
+		console.log("[VideoExporter] Native raw-video (HEVC) session ready", {
+			sessionId: result.sessionId,
+			width: this.config.width,
+			height: this.config.height,
+		});
+		return true;
+	}
+
+	private async encodeRenderedFrameRawNative(
+		timestamp: number,
+		frameDuration: number,
+	): Promise<void> {
+		const sessionId = this.nativeExportSessionId;
+		if (!sessionId) {
+			if (this.cancelled) return;
+			throw new Error("Native raw-video export session is not active");
+		}
+		if (this.nativeEncoderError) throw this.nativeEncoderError;
+
+		// Bound in-flight raw frames (each ~width*height*4 bytes) to cap memory.
+		while (
+			this.nativeWritePromises.size >= ModernVideoExporter.NATIVE_RAW_VIDEO_MAX_IN_FLIGHT
+		) {
+			await this.awaitOldestNativeWrite();
+			if (this.cancelled) return;
+			if (this.nativeEncoderError) throw this.nativeEncoderError;
+		}
+
+		const canvas = this.renderer!.getCanvas();
+		const frame = new VideoFrame(canvas, { timestamp, duration: frameDuration });
+		let buffer: Uint8Array;
+		try {
+			// Force a tightly packed RGBA layout (stride = width*4). ffmpeg reads the
+			// rawvideo stream as width*height*4 with no row padding, so we must not
+			// let the implementation add stride padding.
+			const stride = this.config.width * 4;
+			const layout = [{ offset: 0, stride }];
+			buffer = new Uint8Array(stride * this.config.height);
+			await frame.copyTo(buffer, { format: "RGBA", layout });
+		} finally {
+			frame.close();
+		}
+
+		this.queueNativeWriteChunk(sessionId, buffer);
+		this.flushPendingNativeWriteBatch(sessionId);
+	}
+
 	private async tryStartNativeVideoExport(): Promise<boolean> {
 		this.lastNativeExportError = null;
 
@@ -3598,6 +3713,7 @@ export class ModernVideoExporter {
 		this.pendingNativeWriteChunks = [];
 		this.pendingNativeWriteBytes = 0;
 		this.maxNativeWriteInFlight = 1;
+		this.useNativeRawVideo = false;
 		this.notifyEncodeCapacityAvailable();
 		this.encodeCapacityWaiters.clear();
 		this.videoDescription = undefined;
