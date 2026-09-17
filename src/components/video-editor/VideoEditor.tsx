@@ -3313,6 +3313,7 @@ export default function VideoEditor() {
 			timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 		}));
 		applySessionPresentation(null);
+		setError(null);
 		await window.electronAPI.setCurrentVideoPath(sourcePath, { preserveProjectPath: false });
 		setProjectBrowserOpen(false);
 		await refreshProjectLibrary();
@@ -5647,14 +5648,23 @@ export default function VideoEditor() {
 			<div className="flex h-screen items-center justify-center bg-background">
 				<div className="flex flex-col items-center gap-3">
 					<div className="text-destructive">{error}</div>
-					<button
-						ref={projectBrowserFallbackTriggerRef}
-						type="button"
-						onClick={handleOpenProjectBrowser}
-						className="rounded-[5px] bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"
-					>
-						Open Projects
-					</button>
+					<div className="flex items-center gap-2">
+						<button
+							type="button"
+							onClick={handleImportMediaOrProject}
+							className="rounded-[5px] bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"
+						>
+							{t("editor.project.openVideoFile", "Open video file")}
+						</button>
+						<button
+							ref={projectBrowserFallbackTriggerRef}
+							type="button"
+							onClick={handleOpenProjectBrowser}
+							className="rounded-[5px] border border-foreground/15 bg-foreground/5 px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-foreground/10"
+						>
+							Open Projects
+						</button>
+					</div>
 				</div>
 				{projectBrowser}
 				{projectSaveDialog}

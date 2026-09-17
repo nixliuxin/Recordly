@@ -2,6 +2,7 @@ import {
 	ArrowClockwiseIcon,
 	CaretUpIcon,
 	DotsThreeVerticalIcon,
+	FileVideoIcon,
 	MicrophoneIcon,
 	MicrophoneSlashIcon,
 	MinusIcon,
@@ -353,6 +354,18 @@ function LaunchWindowContent() {
 
 			<Separator orientation="vertical" className="mx-[5px] h-6" />
 
+			<Button
+				variant="ghost"
+				size="icon"
+				iconSize="lg"
+				onClick={() => {
+					void openVideoFile();
+				}}
+				title={t("recording.openVideoFile")}
+			>
+				<FileVideoIcon size={18} />
+			</Button>
+
 			<div className="relative w-0 h-0">
 				<ProjectPopover
 					entries={projectLibraryEntries}
@@ -369,9 +382,6 @@ function LaunchWindowContent() {
 				}}
 				onChooseRecordingsDirectory={() => {
 					void chooseRecordingsDirectory();
-				}}
-				onOpenVideoFile={() => {
-					void openVideoFile();
 				}}
 				onOpenProjectBrowser={() => {
 					refreshProjectLibrary().then(() => {

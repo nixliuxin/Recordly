@@ -111,7 +111,8 @@
 		"showInFolder": "Mostrar na pasta"
 	},
 	"project": {
-		"untitled": "Sem título"
+		"untitled": "Sem título",
+		"openVideoFile": "Abrir arquivo de vídeo"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Nada está quebrado, mas não poderemos renderizar uma sobreposição animada do cursor.",

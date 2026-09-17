@@ -112,7 +112,8 @@
 		"showInFolder": "Tonen in map"
 	},
 	"project": {
-		"untitled": "Naamloos"
+		"untitled": "Naamloos",
+		"openVideoFile": "Videobestand openen"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Er is niets kapot, maar we kunnen geen geanimeerde cursor-overlay renderen.",

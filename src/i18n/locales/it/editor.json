@@ -111,7 +111,8 @@
 		"showInFolder": "Mostra nella cartella"
 	},
 	"project": {
-		"untitled": "Senza titolo"
+		"untitled": "Senza titolo",
+		"openVideoFile": "Apri file video"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Niente è rotto, ma non sarà possibile renderizzare un overlay del cursore animato.",

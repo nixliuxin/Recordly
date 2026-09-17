@@ -111,7 +111,8 @@
 		"showInFolder": "Mostrar en carpeta"
 	},
 	"project": {
-		"untitled": "Sin título"
+		"untitled": "Sin título",
+		"openVideoFile": "Abrir archivo de video"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Nada está roto, pero no podremos renderizar una superposición de cursor animada.",

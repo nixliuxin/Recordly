@@ -3,7 +3,6 @@ import {
 	EyeSlashIcon,
 	FolderOpenIcon,
 	TranslateIcon,
-	VideoCameraIcon,
 	ArrowClockwiseIcon,
 	SunIcon,
 	MoonIcon,
@@ -39,7 +38,6 @@ export function MorePopover({
 	hideHudFromCapture,
 	onToggleHudCaptureProtection,
 	onChooseRecordingsDirectory,
-	onOpenVideoFile,
 	onOpenProjectBrowser,
 	showDevUpdatePreview,
 	onPreviewUpdateUi,
@@ -50,7 +48,6 @@ export function MorePopover({
 	hideHudFromCapture: boolean;
 	onToggleHudCaptureProtection: () => void;
 	onChooseRecordingsDirectory: () => void;
-	onOpenVideoFile: () => void;
 	onOpenProjectBrowser: () => void;
 	showDevUpdatePreview: boolean;
 	onPreviewUpdateUi: () => void;
@@ -94,15 +91,6 @@ export function MorePopover({
 				}}
 			>
 				{t("recording.recordingsFolder")}
-			</DropdownItem>
-			<DropdownItem
-				icon={<VideoCameraIcon size={16} />}
-				onClick={() => {
-					requestClose(POPOVER_ID);
-					onOpenVideoFile();
-				}}
-			>
-				{t("recording.openVideoFile")}
 			</DropdownItem>
 			<DropdownItem
 				icon={<FolderOpenIcon size={16} />}

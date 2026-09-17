@@ -111,7 +111,8 @@
 		"showInFolder": "Afficher dans le dossier"
 	},
 	"project": {
-		"untitled": "Sans titre"
+		"untitled": "Sans titre",
+		"openVideoFile": "Ouvrir le fichier vidéo"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Rien n'est cassé, mais nous ne pourrons pas afficher une superposition animée du curseur.",
